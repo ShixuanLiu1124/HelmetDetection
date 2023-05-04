@@ -36,11 +36,21 @@ from pathlib import Path
 
 import torch
 
+# 导入模块
+import sys
+import os
+from pathlib import Path
+
+# 获取当前文件路径并转化为绝对路径
 FILE = Path(__file__).resolve()
+# 获取当前文件所在的目录路径，并赋值给 ROOT
 ROOT = FILE.parents[0]  # YOLOv5 root directory
+# 如果 ROOT 不在系统路径 sys.path 中，就将 ROOT 添加到 sys.path 中
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))  # add ROOT to PATH
+# 计算 ROOT 相对于当前工作目录的路径，并将其赋值给 ROOT 变量
 ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
+
 
 from models.common import DetectMultiBackend
 from utils.dataloaders import IMG_FORMATS, VID_FORMATS, LoadImages, LoadScreenshots, LoadStreams
@@ -81,6 +91,7 @@ def run(
         vid_stride=1,  # video frame-rate stride
 ):
     source = str(source)
+    # 判断要检测的对象类型
     save_img = not nosave and not source.endswith('.txt')  # save inference images
     is_file = Path(source).suffix[1:] in (IMG_FORMATS + VID_FORMATS)
     is_url = source.lower().startswith(('rtsp://', 'rtmp://', 'http://', 'https://'))
@@ -101,6 +112,7 @@ def run(
 
     # Dataloader
     bs = 1  # batch_size
+    # 判断是视频流、截图、图片的哪一种
     if webcam:
         view_img = check_imshow(warn=True)
         dataset = LoadStreams(source, img_size=imgsz, stride=stride, auto=pt, vid_stride=vid_stride)
@@ -112,19 +124,34 @@ def run(
     vid_path, vid_writer = [None] * bs, [None] * bs
 
     # Run inference
+    # 对模型进行预热，其中 imgsz 是输入图像的大小
     model.warmup(imgsz=(1 if pt or model.triton else bs, 3, *imgsz))  # warmup
+    # seen 表示处理的图像数量，windows 为空列表，
+    # dt 是一个元组，包含三个 Profile 类的对象，用于记录模型前向计算、后处理等操作的时间。
     seen, windows, dt = 0, [], (Profile(), Profile(), Profile())
     for path, im, im0s, vid_cap, s in dataset:
+        # 记录模型前向计算时间
         with dt[0]:
+            # 图像转换为 PyTorch 的 Tensor 类型，并将其移动到模型所在设备上
             im = torch.from_numpy(im).to(model.device)
+            # 将 Tensor 类型数据转换为 fp16 或 fp32 格式，以便在模型推理中运算速度更快
+            # model.fp16 表示模型是否使用 fp16 格式
             im = im.half() if model.fp16 else im.float()  # uint8 to fp16/32
+            # 将图像像素值从 0-255 转换为 0.0-1.0 的浮点数，方便模型计算，即归一化
             im /= 255  # 0 - 255 to 0.0 - 1.0
+            # 如果输入数据的维度只有 3 维，即没有 batch 维，需要添加一个 batch 维。
+            # 这是因为模型要求输入的维度必须包含 batch 维
             if len(im.shape) == 3:
                 im = im[None]  # expand for batch dim
 
         # Inference
         with dt[1]:
+            # 定义可视化结果的保存路径，如果 visualize 为真，则调用 increment_path 函数生成一个保存路径，否则返回 False。
             visualize = increment_path(save_dir / Path(path).stem, mkdir=True) if visualize else False
+            # 对输入的图像进行目标检测，返回预测结果。
+            # model 表示目标检测模型
+            # augment 是一个布尔值，表示是否进行数据增强
+            # visualize 表示是否保存可视化结果，如果为 False，则不保存可视化结果。
             pred = model(im, augment=augment, visualize=visualize)
 
         # NMS
